@@ -20,53 +20,65 @@ jobs:
   build_and_push:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      HAS_DOCR: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
       - name: Skip build_and_push (missing DOCR secrets)
-        if: ${{ secrets.DO_API_TOKEN == '' || secrets.DOCR_REGISTRY == '' }}
+        if: ${{ env.HAS_DOCR != 'true' }}
         run: echo "Skipping build_and_push: missing DO_API_TOKEN or DOCR_REGISTRY"
-      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ env.HAS_DOCR == 'true' }}
         uses: actions/checkout@v4
-      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ env.HAS_DOCR == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DO_API_TOKEN }}
-      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+          token: ${{ env.DO_API_TOKEN }}
+      - if: ${{ env.HAS_DOCR == 'true' }}
         run: doctl registry login
-      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/setup-buildx-action@v3
-      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest,registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+          tags: registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest,registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
 
   deploy:
     needs: build_and_push
     runs-on: ubuntu-latest
+    env:
+      HAS_DEPLOY: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
     steps:
       - name: Skip deploy (missing VPS/DOCR/Datadog secrets)
-        if: ${{ secrets.VPS_HOST == '' || secrets.VPS_USER == '' || secrets.VPS_SSH_KEY == '' || secrets.DO_API_TOKEN == '' || secrets.DOCR_REGISTRY == '' || secrets.DATADOG_API_KEY == '' }}
+        if: ${{ env.HAS_DEPLOY != 'true' }}
         run: echo "Skipping deploy: missing required secrets"
-      - if: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
+      - if: ${{ env.HAS_DEPLOY == 'true' }}
         name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ env.VPS_SSH_KEY }}
           script: |
-            docker login registry.digitalocean.com -u doctl -p ${{ secrets.DO_API_TOKEN }}
-            docker pull registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+            docker login registry.digitalocean.com -u doctl -p ${{ env.DO_API_TOKEN }}
+            docker pull registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
             cat > .env <<'EOF'
-            DD_API_KEY=${{ secrets.DATADOG_API_KEY }}
+            DD_API_KEY=${{ env.DATADOG_API_KEY }}
             DD_SITE=datadoghq.com
             DD_ENV=prod
             EOF
             cat > docker-compose.yml <<'EOF'
             services:
               app:
-                image: registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+                image: registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
                 environment:
                   - PORT=3000
                   - DD_AGENT_HOST=datadog
