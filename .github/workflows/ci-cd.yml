@@ -21,33 +21,34 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     env:
+      HAS_DOCR: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
       DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
       DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
       - name: Skip build_and_push (missing DOCR secrets)
-        if: ${{ env.DO_API_TOKEN == '' || env.DOCR_REGISTRY == '' }}
-        run: echo "Skipping build_and_push: missing DO_API_TOKEN or DOCR_REGISTRY"
+        if: ${{ env.HAS_DOCR != 'true' }}
+        run: echo Skipping build_and_push due to missing secrets
 
       - name: Checkout
-        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
+        if: ${{ env.HAS_DOCR == 'true' }}
         uses: actions/checkout@v4
 
       - name: Install doctl
-        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
+        if: ${{ env.HAS_DOCR == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ env.DO_API_TOKEN }}
 
       - name: Login to DOCR
-        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
+        if: ${{ env.HAS_DOCR == 'true' }}
         run: doctl registry login
 
       - name: Setup Docker Buildx
-        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
+        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Image
-        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
+        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
