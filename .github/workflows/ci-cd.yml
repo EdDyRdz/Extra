@@ -17,11 +17,11 @@ jobs:
       - run: npm ci
       - run: npm test
 
-   build_and_push:
+  build_and_push:
     needs: test
     runs-on: ubuntu-latest
     env:
-     if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      HAS_DOCR: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
       DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
       DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
