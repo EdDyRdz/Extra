@@ -18,123 +18,111 @@ jobs:
       - run: npm test
 
   build_and_push:
+    if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
     needs: test
     runs-on: ubuntu-latest
-    env:
-      HAS_DOCR: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
-      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
-      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
-      - name: Skip build_and_push (missing DOCR secrets)
-        if: ${{ env.HAS_DOCR != 'true' }}
-        run: echo "Skipping build_and_push: missing DO_API_TOKEN or DOCR_REGISTRY"
-
       - name: Checkout
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: actions/checkout@v4
 
       - name: Install doctl
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ env.DO_API_TOKEN }}
+          token: ${{ secrets.DO_API_TOKEN }}
 
       - name: Login to DOCR
-        if: ${{ env.HAS_DOCR == 'true' }}
         run: doctl registry login
 
       - name: Setup Docker Buildx
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Image
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest
-            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+            registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest
+            registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
 
-  deploy:
-    needs: build_and_push
-    runs-on: ubuntu-latest
-    env:
-      HAS_DEPLOY: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER }}
-      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
-      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
-      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
-    steps:
-      - name: Skip deploy (missing VPS/DOCR/Datadog secrets)
-        if: ${{ env.HAS_DEPLOY != 'true' }}
-        run: echo "Skipping deploy: missing required secrets"
-      - if: ${{ env.HAS_DEPLOY == 'true' }}
-        name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ env.VPS_HOST }}
-          username: ${{ env.VPS_USER }}
-          key: ${{ env.VPS_SSH_KEY }}
-          script: |
-            docker login registry.digitalocean.com -u doctl -p ${{ env.DO_API_TOKEN }}
-            docker pull registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
-            cat > .env <<'EOF'
-            DD_API_KEY=${{ env.DATADOG_API_KEY }}
-            DD_SITE=datadoghq.com
-            DD_ENV=prod
-            EOF
-            cat > docker-compose.yml <<'EOF'
-            services:
-              app:
-                image: registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
-                environment:
-                  - PORT=3000
-                  - DD_AGENT_HOST=datadog
-                  - DD_ENV=${DD_ENV}
-                expose:
-                  - "3000"
-                labels:
-                  com.datadoghq.ad.logs: '[{"source":"nodejs","service":"basic-vps-pipeline-app"}]'
-              nginx:
-                image: nginx:alpine
-                depends_on:
-                  - app
-                ports:
-                  - "80:80"
-                volumes:
-                  - ./nginx.conf:/etc/nginx/nginx.conf:ro
-                labels:
-                  com.datadoghq.ad.logs: '[{"source":"nginx","service":"nginx"}]'
-              datadog:
-                image: datadog/agent:latest
-                env_file:
-                  - .env
-                environment:
-                  - DD_APM_ENABLED=true
-                  - DD_LOGS_ENABLED=true
-                  - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
-                volumes:
-                  - /var/run/docker.sock:/var/run/docker.sock:ro
-                  - /proc:/host/proc:ro
-                  - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
-            EOF
-            cat > nginx.conf <<'EOF'
-            events {}
-            http {
-              server {
-                listen 80;
-                location / {
-                  proxy_pass http://app:3000;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                }
-              }
-            }
-            EOF
-            docker compose up -d --pull missing --force-recreate
+  # deploy:  # Deshabilitado temporalmente
+  #   needs: build_and_push
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     HAS_DEPLOY: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
+  #     VPS_HOST: ${{ secrets.VPS_HOST }}
+  #     VPS_USER: ${{ secrets.VPS_USER }}
+  #     VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+  #     DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+  #     DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
+  #     DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+  #   steps:
+  #     - name: Skip deploy (missing VPS/DOCR/Datadog secrets)
+  #       if: ${{ env.HAS_DEPLOY != 'true' }}
+  #       run: echo "Skipping deploy: missing required secrets"
+  #     - if: ${{ env.HAS_DEPLOY == 'true' }}
+  #       name: Deploy to VPS via SSH
+  #       uses: appleboy/ssh-action@v1.0.0
+  #       with:
+  #         host: ${{ env.VPS_HOST }}
+  #         username: ${{ env.VPS_USER }}
+  #         key: ${{ env.VPS_SSH_KEY }}
+  #         script: |
+  #           docker login registry.digitalocean.com -u doctl -p ${{ env.DO_API_TOKEN }}
+  #           docker pull registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+  #           cat > .env <<'EOF'
+  #           DD_API_KEY=${{ env.DATADOG_API_KEY }}
+  #           DD_SITE=datadoghq.com
+  #           DD_ENV=prod
+  #           EOF
+  #           cat > docker-compose.yml <<'EOF'
+  #           services:
+  #             app:
+  #               image: registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+  #               environment:
+  #                 - PORT=3000
+  #                 - DD_AGENT_HOST=datadog
+  #                 - DD_ENV=${DD_ENV}
+  #               expose:
+  #                 - "3000"
+  #               labels:
+  #                 com.datadoghq.ad.logs: '[{"source":"nodejs","service":"basic-vps-pipeline-app"}]'
+  #             nginx:
+  #               image: nginx:alpine
+  #               depends_on:
+  #                 - app
+  #               ports:
+  #                 - "80:80"
+  #               volumes:
+  #                 - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #               labels:
+  #                 com.datadoghq.ad.logs: '[{"source":"nginx","service":"nginx"}]'
+  #             datadog:
+  #               image: datadog/agent:latest
+  #               env_file:
+  #                 - .env
+  #               environment:
+  #                 - DD_APM_ENABLED=true
+  #                 - DD_LOGS_ENABLED=true
+  #                 - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+  #               volumes:
+  #                 - /var/run/docker.sock:/var/run/docker.sock:ro
+  #                 - /proc:/host/proc:ro
+  #                 - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+  #           EOF
+  #           cat > nginx.conf <<'EOF'
+  #           events {}
+  #           http {
+  #             server {
+  #               listen 80;
+  #               location / {
+  #                 proxy_pass http://app:3000;
+  #                 proxy_set_header Host $host;
+  #                 proxy_set_header X-Real-IP $remote_addr;
+  #                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  #                 proxy_set_header X-Forwarded-Proto $scheme;
+  #               }
+  #             }
+  #           }
+  #           EOF
+  #           docker compose up -d --pull missing --force-recreate
