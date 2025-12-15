@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    environment:
+      - PORT=3000
+      - DD_AGENT_HOST=datadog
+      - DD_ENV=prod
+    expose:
+      - "3000"
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"basic-vps-pipeline-app"}]'
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nginx","service":"nginx"}]'
+  datadog:
+    image: datadog/agent:latest
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_APM_ENABLED=true
+      - DD_LOGS_ENABLED=true
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro

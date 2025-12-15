@@ -1,0 +1,106 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+      - run: npm ci
+      - run: npm test
+
+  build_and_push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DO_API_TOKEN && secrets.DOCR_REGISTRY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+      - run: doctl registry login
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest,registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+
+  deploy:
+    needs: build_and_push
+    runs-on: ubuntu-latest
+    if: ${{ secrets.VPS_HOST && secrets.VPS_USER && secrets.VPS_SSH_KEY && secrets.DO_API_TOKEN && secrets.DOCR_REGISTRY && secrets.DATADOG_API_KEY }}
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            docker login registry.digitalocean.com -u doctl -p ${{ secrets.DO_API_TOKEN }}
+            docker pull registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+            cat > .env <<'EOF'
+            DD_API_KEY=${{ secrets.DATADOG_API_KEY }}
+            DD_SITE=datadoghq.com
+            DD_ENV=prod
+            EOF
+            cat > docker-compose.yml <<'EOF'
+            services:
+              app:
+                image: registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+                environment:
+                  - PORT=3000
+                  - DD_AGENT_HOST=datadog
+                  - DD_ENV=${DD_ENV}
+                expose:
+                  - "3000"
+                labels:
+                  com.datadoghq.ad.logs: '[{"source":"nodejs","service":"basic-vps-pipeline-app"}]'
+              nginx:
+                image: nginx:alpine
+                depends_on:
+                  - app
+                ports:
+                  - "80:80"
+                volumes:
+                  - ./nginx.conf:/etc/nginx/nginx.conf:ro
+                labels:
+                  com.datadoghq.ad.logs: '[{"source":"nginx","service":"nginx"}]'
+              datadog:
+                image: datadog/agent:latest
+                env_file:
+                  - .env
+                environment:
+                  - DD_APM_ENABLED=true
+                  - DD_LOGS_ENABLED=true
+                  - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+                volumes:
+                  - /var/run/docker.sock:/var/run/docker.sock:ro
+                  - /proc:/host/proc:ro
+                  - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+            EOF
+            cat > nginx.conf <<'EOF'
+            events {}
+            http {
+              server {
+                listen 80;
+                location / {
+                  proxy_pass http://app:3000;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                }
+              }
+            }
+            EOF
+            docker compose up -d --pull missing --force-recreate
