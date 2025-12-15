@@ -24,18 +24,18 @@ jobs:
       - name: Skip build_and_push (missing DOCR secrets)
         if: ${{ secrets.DO_API_TOKEN == '' || secrets.DOCR_REGISTRY == '' }}
         run: echo "Skipping build_and_push: missing DO_API_TOKEN or DOCR_REGISTRY"
-      - uses: actions/checkout@v4
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
-      - uses: digitalocean/action-doctl@v2
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        uses: actions/checkout@v4
+      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
-      - run: doctl registry login
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
-      - uses: docker/setup-buildx-action@v3
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
-      - uses: docker/build-push-action@v6
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        run: doctl registry login
+      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        uses: docker/setup-buildx-action@v3
+      - if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -48,9 +48,9 @@ jobs:
       - name: Skip deploy (missing VPS/DOCR/Datadog secrets)
         if: ${{ secrets.VPS_HOST == '' || secrets.VPS_USER == '' || secrets.VPS_SSH_KEY == '' || secrets.DO_API_TOKEN == '' || secrets.DOCR_REGISTRY == '' || secrets.DATADOG_API_KEY == '' }}
         run: echo "Skipping deploy: missing required secrets"
-      - name: Deploy to VPS via SSH
+      - if: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
+        name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.0
-        if: ${{ secrets.VPS_HOST != '' && secrets.VPS_USER != '' && secrets.VPS_SSH_KEY != '' && secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' && secrets.DATADOG_API_KEY != '' }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
