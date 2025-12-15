@@ -18,25 +18,29 @@ jobs:
       - run: npm test
 
   build_and_push:
-    if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
     needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
+        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
         uses: actions/checkout@v4
 
       - name: Install doctl
+        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
 
       - name: Login to DOCR
+        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
         run: doctl registry login
 
       - name: Setup Docker Buildx
+        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Image
+        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
         uses: docker/build-push-action@v6
         with:
           context: .
