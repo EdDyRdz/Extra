@@ -20,34 +20,41 @@ jobs:
   build_and_push:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
+      - name: Skip build_and_push (missing DOCR secrets)
+        if: ${{ env.DO_API_TOKEN == '' || env.DOCR_REGISTRY == '' }}
+        run: echo "Skipping build_and_push: missing DO_API_TOKEN or DOCR_REGISTRY"
+
       - name: Checkout
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
         uses: actions/checkout@v4
 
       - name: Install doctl
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DO_API_TOKEN }}
+          token: ${{ env.DO_API_TOKEN }}
 
       - name: Login to DOCR
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
         run: doctl registry login
 
       - name: Setup Docker Buildx
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Image
-        if: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
+        if: ${{ env.DO_API_TOKEN != '' && env.DOCR_REGISTRY != '' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest
-            registry.digitalocean.com/${{ secrets.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest
+            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
 
   # deploy:  # Deshabilitado temporalmente
   #   needs: build_and_push
