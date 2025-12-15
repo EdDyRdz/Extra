@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,42 +24,28 @@ jobs:
   build_and_push:
     needs: test
     runs-on: ubuntu-latest
-    env:
-      HAS_DOCR: ${{ secrets.DO_API_TOKEN != '' && secrets.DOCR_REGISTRY != '' }}
-      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
-      DOCR_REGISTRY: ${{ secrets.DOCR_REGISTRY }}
     steps:
-      - name: Skip build_and_push (missing DOCR secrets)
-        if: ${{ env.HAS_DOCR != 'true' }}
-        run: echo Skipping build_and_push due to missing secrets
-
       - name: Checkout
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: actions/checkout@v4
 
-      - name: Install doctl
-        if: ${{ env.HAS_DOCR == 'true' }}
-        uses: digitalocean/action-doctl@v2
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          token: ${{ env.DO_API_TOKEN }}
-
-      - name: Login to DOCR
-        if: ${{ env.HAS_DOCR == 'true' }}
-        run: doctl registry login
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Docker Buildx
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Build & Push Image
-        if: ${{ env.HAS_DOCR == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:latest
-            registry.digitalocean.com/${{ env.DOCR_REGISTRY }}/basic-vps-pipeline-app:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/basic-vps-pipeline-app:latest
+            ghcr.io/${{ github.repository_owner }}/basic-vps-pipeline-app:${{ github.sha }}
 
   # deploy:  # Deshabilitado temporalmente
   #   needs: build_and_push
