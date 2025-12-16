@@ -94,7 +94,14 @@ jobs:
             owner="${{ github.repository_owner }}"
             owner_lc=$(echo "$owner" | tr '[:upper:]' '[:lower:]')
             echo "${{ env.GHCR_PAT }}" | docker login ghcr.io -u "${{ env.GHCR_USERNAME }}" --password-stdin
-            docker pull ghcr.io/${owner_lc}/basic-vps-pipeline-app:${{ github.sha }}
+            IMAGE_TAG="${{ github.sha }}"
+            if ! docker pull ghcr.io/${owner_lc}/basic-vps-pipeline-app:${IMAGE_TAG}; then
+              IMAGE_TAG="latest"
+              docker pull ghcr.io/${owner_lc}/basic-vps-pipeline-app:${IMAGE_TAG}
+            fi
+            if command -v ufw >/dev/null 2>&1; then
+              ufw allow 80/tcp || true
+            fi
             cat > .env <<'EOF'
             DD_API_KEY=${{ env.DATADOG_API_KEY }}
             DD_SITE=datadoghq.com
@@ -103,7 +110,7 @@ jobs:
             cat > docker-compose.yml <<EOF
             services:
               app:
-                image: ghcr.io/${owner_lc}/basic-vps-pipeline-app:${{ github.sha }}
+                image: ghcr.io/${owner_lc}/basic-vps-pipeline-app:${IMAGE_TAG}
                 environment:
                   - PORT=3000
                   - DD_AGENT_HOST=datadog
@@ -150,6 +157,13 @@ jobs:
               }
             }
             EOF
-            docker compose up -d --pull missing --force-recreate
+            docker compose up -d --pull always --force-recreate
             docker ps
-            curl -sS http://localhost/health || true
+            APP_ID="$(docker ps --filter "name=app" -q || true)"
+            NGINX_ID="$(docker ps --filter "name=nginx" -q || true)"
+            if [ -z "$APP_ID" ] || [ -z "$NGINX_ID" ]; then
+              docker compose ps || true
+              docker compose logs --no-color --tail 200 || true
+              exit 1
+            fi
+            curl -sS http://localhost/health || { docker compose logs app nginx --no-color --tail 200 || true; exit 1; }
