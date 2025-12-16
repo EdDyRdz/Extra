@@ -75,8 +75,9 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
+          script_stop: true
           script: |
-            set -e
+            set -euxo pipefail
             if ! command -v docker >/dev/null 2>&1; then
               apt-get update -y
               apt-get install -y ca-certificates curl gnupg
@@ -88,6 +89,8 @@ jobs:
               apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
               systemctl enable --now docker
             fi
+            docker --version
+            docker compose version
             owner="${{ github.repository_owner }}"
             owner_lc=$(echo "$owner" | tr '[:upper:]' '[:lower:]')
             echo "${{ env.GHCR_PAT }}" | docker login ghcr.io -u "${{ env.GHCR_USERNAME }}" --password-stdin
@@ -148,3 +151,5 @@ jobs:
             }
             EOF
             docker compose up -d --pull missing --force-recreate
+            docker ps
+            curl -sS http://localhost/health || true
